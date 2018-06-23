@@ -129,6 +129,7 @@ elif mode == 'train':
         #     emgs[k] = normalize(emgs[k])
 
         # print(np.random.normal(0, 0.1, 1000).shape)
+
         z = np.array([np.random.normal(0, 0.1, 1000) for i in range(batch_size)])
 
         # _, _, ld, lg = sess.run([model.d_optimizer, model.g_optimizer, model.d_loss, model.g_loss], feed_dict={model.real_image:images, model.emg_data:emgs, model.z:z})

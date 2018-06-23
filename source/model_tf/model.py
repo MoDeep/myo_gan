@@ -244,7 +244,7 @@ class Model:
 
         with tf.variable_scope("discriminator_edge", reuse=reuse):
             # with tf.device('/gpu:0'):
-            with slim.arg_scope([slim.conv2d], kernel_size=3, stride=2, activation_fn=tf.nn.relu,
+            with slim.arg_scope([slim.conv2d], kernel_size=3, stride=2, activation_fn=tf.nn.leaky_relu,
                                 normalizer_fn=tflayers.batch_norm,
                                 weights_initializer=tf.random_normal_initializer(stddev=0.02)):
                 # with slim.arg_scope([slim.batch_norm], activation_fn=leaky_relu, is_training=(self.mode=='train')):
@@ -275,6 +275,27 @@ class Model:
             print(net)
 
         return net, ind_feature
+
+    def discriminator_edge_patch(self, input, reuse=False):
+        net = tf.random_crop(input, [1, 70, 70, 1])
+        with tf.variable_scope("discriminator_edge_patch", reuse=reuse):
+            with slim.arg_scope([slim.conv2d], kernel_size=3, stride=2, activation_fn=tf.nn.leaky_relu,
+                                normalizer_fn=tflayers.batch_norm,
+                                weights_initializer=tf.random_normal_initializer(stddev=0.02)):
+                net = slim.conv2d(net, num_outputs=1024)        # 35 x 35
+                print(net)
+                net = slim.conv2d(net, num_outputs=512)         # 18 x 18
+                print(net)
+                net = slim.conv2d(net, num_outputs=256)         # 9 x 9
+                print(net)
+                net = slim.conv2d(net, num_outputs=128)         # 9 x 9
+                print(net)
+
+            net = slim.flatten(net)
+            net = slim.fully_connected(net, num_outputs=1, activation_fn=tf.nn.sigmoid,
+                                       weights_initializer=tflayers.xavier_initializer())
+
+        return net
 
     def discriminator_real(self, input, reuse=False):
         net = input
@@ -466,23 +487,33 @@ class Model:
                 self.real_logits = self.discriminator_real(self.real_image, reuse=True)
             else:
                 self.fake_image = self.generator_edge(self.emg_data, self.z, reuse=False)
-                self.fake_logits, self.fake_feature = self.discriminator_edge(self.fake_image)
-                self.real_logits, self.real_feature = self.discriminator_edge(self.real_image, reuse=True)
+                self.fake_logits = self.discriminator_edge_patch(self.fake_image)
+                self.real_logits = self.discriminator_edge_patch(self.real_image, reuse=True)
+                # self.fake_logits, self.fake_feature = self.discriminator_edge(self.fake_image)
+                # self.real_logits, self.real_feature = self.discriminator_edge(self.real_image, reuse=True)
 
             # self.d_loss_fake = tf.losses.sigmoid_cross_entropy(tf.zeros_like(self.fake_logits), self.fake_logits)
             # self.d_loss_real = tf.losses.sigmoid_cross_entropy(tf.ones_like(self.real_logits), self.real_logits)
-            self.d_loss_fake = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(self.fake_logits), logits=self.fake_logits)
-            self.d_loss_real = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(self.real_logits), logits=self.real_logits)
-            self.d_loss = tf.reduce_mean(self.d_loss_fake + self.d_loss_real)
+            # self.d_loss_fake = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(self.fake_logits), logits=self.fake_logits)
+            # self.d_loss_real = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(self.real_logits), logits=self.real_logits)
+            self.d_loss_fake = 0.5 * ((tf.reduce_mean(self.fake_logits) - 1.0) ** 2)
+            self.d_loss_real = 0.5 * ((tf.reduce_mean(self.real_logits)) ** 2)
+            # self.d_loss = tf.reduce_mean(self.d_loss_fake + self.d_loss_real)
+            self.d_loss = self.d_loss_fake + self.d_loss_real
 
             # self.g_loss = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(tf.ones_like(self.fake_logits), self.fake_logits))
             self.feature_matching_loss = tf.reduce_mean(tf.square(self.fake_image - self.real_image))
-            self.g_loss = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(self.fake_logits), logits=self.fake_logits))
+            # self.g_loss = tf.reduce_mean(
+            #     tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(self.fake_logits), logits=self.fake_logits))
+            self.g_loss = 0.5 * ((tf.reduce_mean(self.fake_logits) - 1.0) ** 2)
 
             self.d_optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(self.d_loss)
             self.g_optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(self.g_loss)
             self.f_optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(self.feature_matching_loss)
+
+            self.image_patches_flatten = \
+                tf.extract_image_patches(self.real_image, (1, 64, 64, 1), (1, 64, 64, 1), (1, 1, 1, 1), 'SAME')
+            self.image_patches = tf.reshape(self.image_patches_flatten, [-1, 4, 64, 64])
 
         elif self.mode == 'rectest':
             emg_flatten = slim.flatten(self.emg_data)
