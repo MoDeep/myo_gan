@@ -52,7 +52,7 @@ class Model:
         print(emg_data.shape)
 
         with tf.variable_scope('lstm', reuse=reuse):
-            cell = rnn.BasicLSTMCell(num_units=256, state_is_tuple=True)
+            cell = rnn.BasicLSTMCell(num_units=1024, state_is_tuple=True)
             initial_state = cell.zero_state(self.batch_size, tf.float32)
             outputs, _states = tf.nn.dynamic_rnn(cell, emg_data, initial_state=initial_state, dtype=np.float32)
 
@@ -293,7 +293,7 @@ class Model:
 
             net = slim.flatten(net)
             net = slim.fully_connected(net, num_outputs=1, activation_fn=tf.nn.sigmoid,
-                                       weights_initializer=tflayers.xavier_initializer())
+                                       weights_initializer=tf.random_normal_initializer(stddev=0.02))
 
         return net
 
@@ -473,7 +473,11 @@ class Model:
 
         # self.emg_data = tf.placeholder(tf.float32, [None, 30, 16])
         # self.emg_data = tf.placeholder(tf.float32, [None, 8])
-        self.emg_data = tf.placeholder(tf.float32, [None, 100, 8])
+        if self.mode == 'train':
+            self.emg_data = tf.placeholder(tf.float32, [None, 100, 8])
+        elif self.mode == 'pretrain':
+            self.emg_data = tf.placeholder(tf.float32, [None, 600, 8])
+
         self.image_flatten = tf.placeholder(tf.float32, [None, 16*16])
         # self.z = tf.placeholder(tf.float32, [None, 20])
         self.z = tf.placeholder(tf.float32, [None, 1000])
@@ -496,8 +500,8 @@ class Model:
             # self.d_loss_real = tf.losses.sigmoid_cross_entropy(tf.ones_like(self.real_logits), self.real_logits)
             # self.d_loss_fake = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(self.fake_logits), logits=self.fake_logits)
             # self.d_loss_real = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(self.real_logits), logits=self.real_logits)
-            self.d_loss_fake = 0.5 * ((tf.reduce_mean(self.fake_logits) - 1.0) ** 2)
-            self.d_loss_real = 0.5 * ((tf.reduce_mean(self.real_logits)) ** 2)
+            self.d_loss_real = 0.5 * ((tf.reduce_mean(self.real_logits) - 1.0) ** 2)
+            self.d_loss_fake = 0.5 * ((tf.reduce_mean(self.fake_logits)) ** 2)
             # self.d_loss = tf.reduce_mean(self.d_loss_fake + self.d_loss_real)
             self.d_loss = self.d_loss_fake + self.d_loss_real
 
@@ -505,7 +509,7 @@ class Model:
             self.feature_matching_loss = tf.reduce_mean(tf.square(self.fake_image - self.real_image))
             # self.g_loss = tf.reduce_mean(
             #     tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(self.fake_logits), logits=self.fake_logits))
-            self.g_loss = 0.5 * ((tf.reduce_mean(self.fake_logits) - 1.0) ** 2)
+            self.g_loss = 0.5 * ((tf.reduce_mean(self.fake_logits) - 1.0) ** 2) * 100.0
 
             self.d_optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(self.d_loss)
             self.g_optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(self.g_loss)
@@ -526,9 +530,11 @@ class Model:
             self.y_onehot = tf.one_hot(self.y_label, self.label_num)
             print('After one-hot :', self.y_onehot)
 
-            self.class_logits = self.classifier(self.emg_data)
+            # self.class_logits = self.classifier(self.emg_data)
+            self.class_logits = self.lstm(self.emg_data)
+            print('class_logits :', self.class_logits.shape)
             self.class_prediction = tf.argmax(self.class_logits, 1)
-            print('class logits :', self.class_logits.shape)
+            print('class prediction :', self.class_prediction.shape)
             self.class_loss = tf.losses.softmax_cross_entropy(self.y_onehot, self.class_logits)
             self.class_acccuracy = tf.reduce_mean(tf.cast(tf.equal(self.class_prediction, self.y_label), tf.float32))
 

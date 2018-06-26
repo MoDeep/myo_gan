@@ -11,17 +11,18 @@ import cv2
 import matplotlib.pyplot as plt
 import pywt
 
-from load_data import DataLoader_Continous
+from load_data import DataLoader_discrete, DataLoader_Continous
 from model import Model
 
 print(tf.__version__)
 
-mode = 'train'
+mode = 'pretrain'
 is_real_image = False
 
-loader = DataLoader_Continous(data_path='./dataset_0516/', emg_length=200, is_real_image=is_real_image)
+loader = DataLoader_discrete(data_path='/home/modeep/ftp/HDD1/myo_project/dataset/dataset_2018_05_06/', is_real_image=is_real_image)
+# loader = DataLoader_Continous(data_path='./dataset_0620/', emg_length=200, is_real_image=is_real_image)
 
-batch_size = 4
+batch_size = 32
 label_num = 9
 
 model = Model(mode=mode, batch_size=batch_size, labels=label_num, learning_rate=0.0002, is_real_image=is_real_image)
@@ -39,27 +40,13 @@ if mode == 'pretrain':
     # restorer.restore(sess, './pretrain/iter6000.ckpt')
 
     for i in range(30001):
-        emgs = loader.get_emg_datas(15)
-        print(emgs)
-        # emgs = normalize(emgs)
-        # print(emgs)
-        labels = []
-        _, label = loader.load_image()
-        for k in range(15):
-            # print(label)
-            labels.append(label)
+        emgs = loader.get_emg_datas(batch_size)
+        _, labels = loader.get_images(batch_size)
 
-        labels = np.array(labels)
+        _, loss, pred = sess.run([model.class_trainer, model.class_loss, model.class_prediction], feed_dict={model.emg_data: emgs, model.y_label: labels})
 
-        _, loss, acc, pred, logit= sess.run([model.class_trainer, model.class_loss, model.class_acccuracy, model.class_prediction, model.class_logits], feed_dict={model.emg_data:emgs, model.y_label:labels})
-        print('Iteration', i, ' -', 'Loss :', loss, 'Acc :', acc)
-        # print('Logit :', logit)
-        print('Labels :', labels)
-        print('Prediction :', pred)
+        print(i, loss, labels, pred)
 
-        if i % 500 == 0:
-            saver = tf.train.Saver()
-            saver.save(sess, './pretrain/' + 'iter' + str(i) + '.ckpt')
 
         # print('Iteration', i)
 
@@ -134,8 +121,8 @@ elif mode == 'train':
 
         # _, _, ld, lg = sess.run([model.d_optimizer, model.g_optimizer, model.d_loss, model.g_loss], feed_dict={model.real_image:images, model.emg_data:emgs, model.z:z})
         _ = sess.run(model.d_optimizer, feed_dict={model.real_image: images, model.z: z})
-        _ = sess.run(model.g_optimizer, feed_dict={model.real_image: images, model.z: z})
-        _ = sess.run(model.g_optimizer, feed_dict={model.real_image: images, model.z: z})
+        _ = sess.run(model.d_optimizer, feed_dict={model.real_image: images, model.z: z})
+        _ = sess.run(model.d_optimizer, feed_dict={model.real_image: images, model.z: z})
         _ = sess.run(model.f_optimizer, feed_dict={model.real_image: images, model.z: z})
         _, _, ld, lg, lf = sess.run([model.d_optimizer, model.g_optimizer, model.d_loss, model.g_loss, model.feature_matching_loss], feed_dict={model.real_image: images, model.z: z})
 

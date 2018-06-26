@@ -81,7 +81,7 @@ class DataLoader_discrete:
             emg_data = csv_file[self.emg_index:self.emg_index + emg_length, 1:]
             self.emg_index += emg_length
 
-        emg_data = self.RMS_analyzer(emg_data)
+        # emg_data = self.RMS_analyzer(emg_data)
         return emg_data
 
     def RMS_analyzer(self, emg_data):
